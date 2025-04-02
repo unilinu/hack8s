@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: primary-pod
+  name: primary-pod
+spec:
+  containers:
+  - image: nginx:1.27.0
+    name: primary-pod
+    resources: {}
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+  nodeName: primary
+status: {}

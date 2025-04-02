@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cnf-ssh-service
+  namespace: fleetboard-system
+spec:
+  selector:
+    ssh-app: cnf
+  ports:
+    - protocol: TCP
+      port: 22        # 服务暴露的端口
+      targetPort: 22   # Pod 内的目标端口
+      nodePort: 30022  # 暴露到 Node 上的端口
+  type: NodePort
+

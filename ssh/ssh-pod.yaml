@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sshd
+  namespace: default
+  labels:
+    ssh-app: sshd
+spec:
+  containers:
+    - name: sshd
+      image: ubuntu:22.04
+      imagePullPolicy: IfNotPresent
+      command: ["/bin/bash", "-c"] 
+      args:
+        - |
+          # set env
+          printenv >> /etc/environment
+          # install golang, needing foreign network
+          apt-get update && apt-get install -y curl tar 
+          GO_VERSION=1.23.0 && GO_ARCH=arm64
+          curl -sSLO https://golang.org/dl/go$GO_VERSION.linux-$GO_ARCH.tar.gz && \
+            tar -C /usr/local -xzf go$GO_VERSION.linux-$GO_ARCH.tar.gz && \
+            ln -s /usr/local/go/bin/go /usr/local/bin/go
+          # start sshd
+          apt-get install -y openssh-server && service ssh start && tail -f /dev/null
+      ports:
+        - containerPort: 22  # 默认的 SSH 服务端口
+      volumeMounts:
+        - name: ssh-volume
+          mountPath: /root/.ssh
+  volumes:
+    - name: ssh-volume
+      hostPath:
+        path: /root/.ssh
+        type: Directory
+
