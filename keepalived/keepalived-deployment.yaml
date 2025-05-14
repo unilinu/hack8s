@@ -1,0 +1,86 @@
+# keepalived-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keepalived
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keepalived
+  template:
+    metadata:
+      labels:
+        app: keepalived
+    spec:
+      hostNetwork: true          # 使用主机网络
+      affinity:
+        # 确保 Pod 分散在不同节点
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values: [keepalived]
+              topologyKey: "kubernetes.io/hostname"
+        # 优先调度到 Node 节点
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-role.kubernetes.io/node
+                    operator: Exists
+      initContainers:
+        # 初始化容器：设置优先级
+        - name: init-config
+          image: alpine:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              PRIORITY=$((RANDOM % 101))
+              # 保存优先级到共享文件
+              echo "export PRIORITY=$PRIORITY" >> /etc/keepalived/keepalived.env
+          volumeMounts:
+            - name: keepalived
+              mountPath: /etc/keepalived
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN", "NET_RAW"]
+      containers:
+        - name: keepalived
+          image: alpine:latest
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN", "NET_RAW"]
+          command:
+            - /bin/sh
+            - -c
+            - |
+              # 安装依赖
+              apk update
+              apk add --no-cache keepalived gettext
+              # 加载环境变量文件
+              source /etc/keepalived/keepalived.env
+              # 动态生成配置文件
+              envsubst < /etc/keepalived/keepalived.conf.template > /etc/keepalived/keepalived.conf
+              # 启动 Keepalived
+              keepalived --dont-fork --log-console
+          volumeMounts:
+            - name: keepalived
+              mountPath: /etc/keepalived
+            - name: config-volume
+              mountPath: /etc/keepalived/keepalived.conf.template
+              subPath: keepalived.conf.template
+          
+      volumes:
+        - name: config-volume
+          configMap:
+            name: keepalived-config
+        - name: keepalived
+          emptyDir: {}
+

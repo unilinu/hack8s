@@ -1,0 +1,27 @@
+# keepalived-rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: keepalived-sa
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: keepalived-role
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: keepalived-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: keepalived-role
+subjects:
+- kind: ServiceAccount
+  name: keepalived-sa
+  namespace: default
