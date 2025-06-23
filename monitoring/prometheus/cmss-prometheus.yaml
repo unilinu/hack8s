@@ -1,0 +1,307 @@
+# 创建监控命名空间
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+
+---
+# 部署 Node Exporter (DaemonSet)
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  namespace: monitoring
+  labels:
+    app: node-exporter
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      containers:
+      - name: node-exporter
+        image: registry.paas/cmss/node-exporter:v1.9.1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 9100
+        resources:
+          limits:
+            cpu: 200m
+            memory: 100Mi
+          requests:
+            cpu: 50m
+            memory: 50Mi
+      tolerations:
+      - operator: "Exists"
+
+---
+# 部署 Prometheus
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    
+    scrape_configs:
+    - job_name: 'kubernetes-nodes'
+      kubernetes_sd_configs:
+        - role: pod
+      relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          action: keep
+          regex: node-exporter
+        - source_labels: [__meta_kubernetes_pod_ip]
+          action: replace
+          regex: (.*)
+          replacement: $1:9100
+          target_label: __address__
+        - source_labels: [__meta_kubernetes_pod_node_name]
+          target_label: node
+        - source_labels: [__meta_kubernetes_namespace]
+          target_label: namespace
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      containers:
+      - name: prometheus
+        image: registry.paas/cmss/prometheus:v3.4.1
+        imagePullPolicy: IfNotPresent
+        args:
+          - "--config.file=/etc/prometheus/prometheus.yml"
+          - "--storage.tsdb.path=/prometheus"
+          - "--storage.tsdb.retention.time=7d"
+          - "--storage.tsdb.retention.size=1GB"
+        ports:
+        - containerPort: 9090
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/prometheus
+        - name: storage-volume
+          mountPath: /prometheus
+        resources:
+          limits:
+            cpu: 200m
+            memory: 500Mi
+      volumes:
+      - name: config-volume
+        configMap:
+          name: prometheus-config
+      - name: storage-volume
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: monitoring
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - pods
+  - services
+  - endpoints
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+- kind: ServiceAccount
+  name: prometheus
+  namespace: monitoring
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  selector:
+    app: prometheus
+  ports:
+    - port: 9090
+      targetPort: 9090
+      nodePort: 30090
+  type: NodePort
+
+---
+# 部署 Grafana（包含自动配置的数据源和仪表盘）
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: registry.paas/cmss/grafana:12.0.2
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3000
+        env:
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: "admin123"
+        volumeMounts:
+        - name: grafana-datasources
+          mountPath: /etc/grafana/provisioning/datasources
+        - name: grafana-dashboards
+          mountPath: /etc/grafana/provisioning/dashboards
+        - name: dashboard-storage
+          mountPath: /var/lib/grafana/dashboards
+      volumes:
+      - name: grafana-datasources
+        configMap:
+          name: grafana-datasources
+      - name: grafana-dashboards
+        configMap:
+          name: grafana-dashboards
+      - name: dashboard-storage
+        emptyDir: {}
+
+---
+# 配置数据源（自动连接Prometheus）
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: monitoring
+data:
+  prometheus.yaml: |-
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus.monitoring.svc.cluster.local:9090
+        isDefault: true
+        jsonData:
+          httpMethod: POST
+          prometheusType: Prometheus
+
+---
+# 配置仪表盘
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: monitoring
+data:
+  node-dashboard.yaml: |-
+    apiVersion: 1
+    providers:
+    - name: 'Node Monitoring'
+      orgId: 1
+      folder: ''
+      type: file
+      disableDeletion: true
+      updateIntervalSeconds: 30
+      options:
+        path: /var/lib/grafana/dashboards
+  node-dashboard.json: |-
+    {
+      "title": "Node Monitoring",
+      "time": { "from": "now-1h", "to": "now" },
+      "panels": [
+        {
+          "id": 1,
+          "type": "graph",
+          "title": "CPU Usage",
+          "gridPos": {"x":0,"y":0,"w":12,"h":8},
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "100 - (avg by(node) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100",
+              "legendFormat": "{{node}}",
+              "refId": "A"
+            }
+          ],
+          "yaxes": [
+            {"format": "percent", "min": 0},
+            {"format": "short"}
+          ]
+        },
+        {
+          "id": 2,
+          "type": "graph",
+          "title": "Memory Usage",
+          "gridPos": {"x":0,"y":8,"w":12,"h":8},
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100",
+              "legendFormat": "{{node}}",
+              "refId": "A"
+            }
+          ],
+          "yaxes": [
+            {"format": "percent", "min": 0},
+            {"format": "short"}
+          ]
+        }
+      ]
+    }
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  selector:
+    app: grafana
+  ports:
+    - port: 3000
+      targetPort: 3000
+      nodePort: 30030
+  type: NodePort
+
