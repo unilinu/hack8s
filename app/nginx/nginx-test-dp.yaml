@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-test-dp
+  namespace: default
+  labels:
+    app: nginx-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-test
+  template:
+    metadata:
+      labels:
+        app: nginx-test
+    spec:
+      tolerations:
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+      # nodeName: master
+      nodeSelector:
+        kubernetes.io/hostname: master
+      # affinity:
+      #   nodeAffinity:
+      #     requiredDuringSchedulingIgnoredDuringExecution:
+      #       nodeSelectorTerms:
+      #       - matchExpressions:
+      #         - key: kubernetes.io/hostname
+      #           operator: In
+      #           values:
+      #           - master
+      containers:
+        - name: nginx-test
+          image: registry.paas/cmss/nginx:1.21.4
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+
