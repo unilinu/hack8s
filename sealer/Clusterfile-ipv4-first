@@ -8,8 +8,8 @@ spec:
     - IPV6=true                       # 是否使用ipv6地址
     - IPV6_FIRST=false                # 是否ipv6网络优先
     - CNI_TYPE=calico                 # CNI插件类型
-    - IPV4_AUTODETECTION_METHOD="can-reach=10.211.55.19"
-    - IPV6_AUTODETECTION_METHOD="can-reach=fdb2:2c26:f4e4:0:758b:3856:b717:1ef3"
+    - IPV4_AUTODETECTION_METHOD="can-reach=10.211.55.23"
+    - IPV6_AUTODETECTION_METHOD="can-reach=fdb2:2c26:f4e4:0:1742:d058:7f27:f9b4"
 #    - BACKUP_DIR=/apps/data/backup  # 定时备份目录，默认为/apps/data/backup
     - CHECK_CLOCK_SOURCE=false       # 时钟源检查，默认为true
     - CHECK_VOLUME_MOUNTS=false      # 目录挂载检查，默认为true
@@ -33,9 +33,9 @@ spec:
     user: root # 非root用户只能使用deployer
     passwd: root
   hosts:
-    - ips: [10.211.55.19]
+    - ips: [10.211.55.23]
       roles: [ master ] 
-    - ips: [10.211.55.20]
+    - ips: [10.211.55.24]
       roles: [ node ]
 ---
 apiVersion: sealer.cmss.com/v1
@@ -46,7 +46,7 @@ spec:
   type: LABEL
   action: PreGuest
   data: |
-    10.211.55.19 node-role.kubernetes.io/master=
+    10.211.55.23 node-role.kubernetes.io/master=
 ---
 # apiVersion: sealer.cmss.com/v1
 # kind: Plugin
@@ -56,10 +56,10 @@ spec:
 #   type: TAINT
 #   action: PreGuest
 #   data: |
-#     10.211.55.19 node-role.kubernetes.io/master-
+#     10.211.55.23 node-role.kubernetes.io/master-
 #     100.73.38.46 node-role.kubernetes.io/master-
 #     100.73.38.47 node-role.kubernetes.io/master-
-#     10.211.55.19 node-role.kubernetes.io/control-plane-
+#     10.211.55.23 node-role.kubernetes.io/control-plane-
 #     100.73.38.46 node-role.kubernetes.io/control-plane-
 #     100.73.38.47 node-role.kubernetes.io/control-plane-
 ---
@@ -71,7 +71,7 @@ spec:
   type: LABEL
   action: PreGuest
   data: |
-    10.211.55.20 node-role.kubernetes.io/node=
+    10.211.55.24 node-role.kubernetes.io/node=
 ---
 apiVersion: sealer.cmss.com/v1
 kind: Plugin
